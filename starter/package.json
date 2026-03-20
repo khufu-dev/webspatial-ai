@@ -1,0 +1,36 @@
+{
+  "name": "webspatial-sample",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "lint": "tsc --build",
+    "build": "npm run lint && vite build",
+    "preview": "npm run build && vite preview --host --port 5173",
+    "avp": "npm run build && webspatial-builder run --base=http://localhost:5173"
+  },
+  "dependencies": {
+    "@react-three/drei": "latest",
+    "@react-three/fiber": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/three": "latest",
+    "@vitejs/plugin-react": "latest",
+    "@webspatial/core-sdk": "latest",
+    "@webspatial/react-sdk": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router": "latest",
+    "three": "latest",
+    "three-usdz-loader": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@webspatial/builder": "latest",
+    "@webspatial/platform-visionos": "latest",
+    "@webspatial/vite-plugin": "latest"
+  }
+}

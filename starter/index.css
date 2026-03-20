@@ -1,0 +1,12 @@
+html {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
+    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  color: CanvasText;
+  color-scheme: light dark;
+}
+
+html.isSpatial {
+  color: Canvas;
+  --xr-background-material: translucent;
+}

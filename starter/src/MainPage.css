@@ -1,0 +1,7 @@
+.mainPage {
+  .model {
+    width: 300px;
+    height: 200px;
+    --xr-depth: 150px;
+  }
+}
