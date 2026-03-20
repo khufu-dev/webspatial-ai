@@ -1,0 +1,31 @@
+{
+  "name": "@webspatial/adb-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for debugging/testing WebSpatial sites on PICO OS 6 (Swan) via ADB",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "webspatial-adb-mcp": "./build/index.js"
+  },
+  "files": ["build"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "start:http": "node build/http-server.js",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
