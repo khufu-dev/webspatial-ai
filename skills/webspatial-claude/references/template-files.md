@@ -272,6 +272,48 @@ export default function MainPage() {
 }
 ```
 
+**With a Reality scene** (dynamic 3D — primitives, model instances, interaction):
+
+```tsx
+import {
+  Reality, SceneGraph, Entity,
+  BoxEntity, SphereEntity,
+  UnlitMaterial, ModelAsset, ModelEntity,
+} from "@webspatial/react-sdk";
+import "./MainPage.css";
+
+export default function MainPage() {
+  return (
+    <div className="mainPage">
+      <header>
+        <h1>Hello DISPLAY_NAME</h1>
+      </header>
+      <main>
+        <Reality className="reality" style={{ width: '100%', height: '400px', '--xr-depth': 200 }}>
+          <UnlitMaterial id="primary" color="#4a90d9" />
+          <UnlitMaterial id="accent" color="#e74c3c" />
+
+          <SceneGraph>
+            <BoxEntity
+              materials={['primary']}
+              width={0.2} height={0.2} depth={0.2}
+              position={{ x: -0.2, y: 0, z: 0 }}
+            />
+            <SphereEntity
+              materials={['accent']}
+              radius={0.1}
+              position={{ x: 0.2, y: 0, z: 0 }}
+            />
+          </SceneGraph>
+        </Reality>
+      </main>
+    </div>
+  );
+}
+```
+
+Important: only import the specific components you use from `@webspatial/react-sdk`. The project has `noUnusedLocals: true` in tsconfig.json, so unused imports will cause build failures.
+
 ## src/MainPage.css
 
 This is the base page CSS. When adding spatial-specific styles for this page, scope them under `html.isSpatial` within this same file. The global `index.css` only contains base spatial defaults (background material, color).

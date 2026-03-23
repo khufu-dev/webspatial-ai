@@ -10,6 +10,7 @@ Curated examples from the [WebSpatial SDK test server](https://github.com/webspa
 4. Multi-Scene Management
 5. Spatial Gestures
 6. Basic Transforms
+7. Dynamic 3D with Reality
 
 ---
 
@@ -312,6 +313,212 @@ const transform = [
 
 ---
 
+## 6. Dynamic 3D with Reality
+
+The `<Reality>` component creates a 3D viewport for building scenes with primitives, materials, and model instances. Think of it as `<canvas>` but for 3D.
+
+Source: Dynamic 3D API spec and `pages/reality/` examples
+
+### Basic scene with primitives
+
+```tsx
+import {
+  Reality, SceneGraph, Entity,
+  BoxEntity, SphereEntity, ConeEntity, CylinderEntity, PlaneEntity,
+  UnlitMaterial,
+} from '@webspatial/react-sdk';
+
+function PrimitivesDemo() {
+  return (
+    <Reality style={{ width: '600px', height: '400px', '--xr-depth': 200 }}>
+      <UnlitMaterial id="red" color="#ff0000" />
+      <UnlitMaterial id="green" color="#00ff00" />
+      <UnlitMaterial id="blue" color="#0000ff" />
+      <UnlitMaterial id="glass" color="#0000ff" transparent opacity={0.5} />
+
+      <SceneGraph>
+        <BoxEntity
+          materials={['red']}
+          width={0.2} height={0.2} depth={0.2}
+          position={{ x: -0.3, y: 0, z: 0 }}
+          cornerRadius={0.01}
+        />
+        <SphereEntity
+          materials={['green']}
+          radius={0.1}
+          position={{ x: 0, y: 0, z: 0 }}
+        />
+        <ConeEntity
+          materials={['blue']}
+          radius={0.1} height={0.2}
+          position={{ x: 0.3, y: 0, z: 0 }}
+        />
+      </SceneGraph>
+    </Reality>
+  );
+}
+```
+
+Key patterns:
+- All sizes in **meters** (0.1 = 10 cm), rotation in **radians** (Math.PI/2 = 90°)
+- Coordinate system: +Y up, +X right, +Z toward viewer (right-handed)
+- Declare materials first (by `id`), then `<SceneGraph>` with entities
+- `cornerRadius` on `BoxEntity` for rounded corners
+
+### Entity grouping and transforms
+
+```tsx
+<SceneGraph>
+  <Entity
+    position={{ x: 0, y: 0, z: 0 }}
+    rotation={{ x: 0, y: Math.PI / 4, z: 0 }}
+  >
+    <BoxEntity materials={['red']} width={0.1} height={0.1} depth={0.1} />
+    <BoxEntity
+      materials={['blue']}
+      width={0.1} height={0.1} depth={0.1}
+      position={{ x: 0.15, y: 0, z: 0 }}
+    />
+  </Entity>
+</SceneGraph>
+```
+
+Key patterns:
+- `Entity` is an empty transform group — moving it moves all children
+- Child transforms are relative to their parent `Entity`
+
+### Model instancing with ModelAsset + ModelEntity
+
+```tsx
+import {
+  Reality, SceneGraph,
+  ModelAsset, ModelEntity, UnlitMaterial,
+} from '@webspatial/react-sdk';
+
+function FleetDemo() {
+  return (
+    <Reality style={{ width: '100%', height: '500px' }}>
+      <ModelAsset id="ship" src="/usdz/toy_biplane.usdz" />
+
+      <SceneGraph>
+        {/* Lead ship */}
+        <ModelEntity
+          model="ship"
+          position={{ x: 0, y: 0, z: 0 }}
+          scale={{ x: 1, y: 1, z: 1 }}
+        />
+        {/* Wingmen — same asset, different positions/scales */}
+        <ModelEntity
+          model="ship"
+          position={{ x: -0.5, y: -0.2, z: 0.3 }}
+          scale={{ x: 0.8, y: 0.8, z: 0.8 }}
+        />
+        <ModelEntity
+          model="ship"
+          position={{ x: 0.5, y: -0.2, z: 0.3 }}
+          scale={{ x: 0.8, y: 0.8, z: 0.8 }}
+        />
+      </SceneGraph>
+    </Reality>
+  );
+}
+```
+
+Key patterns:
+- `ModelAsset` loads the model once (by `id` and `src`); invisible by itself
+- `ModelEntity` instances the asset in the scene (many instances per asset)
+- `ModelEntity` accepts `materials` prop for material override on the instance
+
+### Interaction — tap to change color
+
+```tsx
+import { useState } from 'react';
+import {
+  Reality, SceneGraph, BoxEntity, UnlitMaterial,
+} from '@webspatial/react-sdk';
+
+function InteractiveBox() {
+  const [color, setColor] = useState('#ff0000');
+
+  return (
+    <Reality style={{ width: '400px', height: '400px', '--xr-depth': 100 }}>
+      <UnlitMaterial id="dynamic" color={color} />
+
+      <SceneGraph>
+        <BoxEntity
+          materials={['dynamic']}
+          width={0.2} height={0.2} depth={0.2}
+          onSpatialTap={(e) => {
+            setColor(prev => prev === '#ff0000' ? '#00ff00' : '#ff0000');
+            console.log('Tapped at:', e.detail.location3D);
+          }}
+        />
+      </SceneGraph>
+    </Reality>
+  );
+}
+```
+
+Key patterns:
+- Spatial events: `onSpatialTap`, `onSpatialDragStart`, `onSpatialDrag`, `onSpatialDragEnd`, `onSpatialRotate`, `onSpatialMagnify`
+- Dynamic material updates: changing `UnlitMaterial` props at runtime updates all entities using that material (Phase 2)
+- Toggle visibility with conditional render: `{show && <BoxEntity ... />}`
+
+### Animation with requestAnimationFrame
+
+```tsx
+import { useState, useEffect } from 'react';
+import {
+  Reality, SceneGraph, BoxEntity, UnlitMaterial,
+} from '@webspatial/react-sdk';
+
+function SpinningBox() {
+  const [rotation, setRotation] = useState({ x: 0, y: 0, z: 0 });
+
+  useEffect(() => {
+    let id: number;
+    function animate() {
+      setRotation(prev => ({ ...prev, y: prev.y + 0.02 }));
+      id = requestAnimationFrame(animate);
+    }
+    animate();
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    <Reality style={{ width: '400px', height: '400px', '--xr-depth': 100 }}>
+      <UnlitMaterial id="red" color="#ff0000" />
+      <SceneGraph>
+        <BoxEntity
+          materials={['red']}
+          width={0.2} height={0.2} depth={0.2}
+          rotation={rotation}
+        />
+      </SceneGraph>
+    </Reality>
+  );
+}
+```
+
+Key patterns:
+- Drive transforms from `requestAnimationFrame` updating React state
+- Entity transforms are applied each frame from React state
+
+### Multi-face materials (splitFaces)
+
+```tsx
+<BoxEntity
+  width={0.2} height={0.2} depth={0.2}
+  splitFaces
+  materials={['front', 'back', 'top', 'bottom', 'left', 'right']}
+/>
+```
+
+Key patterns:
+- When `splitFaces={true}`, `materials` takes six material IDs: front, back, top, bottom, left, right
+
+---
+
 ## Quick Reference: CSS Custom Properties
 
 | Property | Values | Description |
@@ -328,6 +535,13 @@ import { Spatial } from "@webspatial/core-sdk";
 
 // React SDK — components and hooks
 import { Model, ModelRef, initScene, toSceneSpatial, enableDebugTool } from "@webspatial/react-sdk";
+
+// React SDK — Dynamic 3D / Reality
+import {
+  Reality, SceneGraph, Entity,
+  BoxEntity, SphereEntity, PlaneEntity, ConeEntity, CylinderEntity,
+  ModelEntity, ModelAsset, UnlitMaterial,
+} from "@webspatial/react-sdk";
 
 // Types
 import type { BackgroundMaterialType } from "@webspatial/core-sdk";

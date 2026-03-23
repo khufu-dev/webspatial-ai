@@ -177,9 +177,72 @@ If the user describes what their app should do or show, modify `MainPage.tsx` ac
 - **Material backgrounds**: `--xr-background-material` CSS property (values: `transparent`, `translucent`, `thin`, `regular`, `thick`, `ultraThick`)
 - **Elevation**: `--xr-back` CSS property for Z-axis positioning (in points)
 - **3D model depth**: `--xr-depth` CSS property on `<Model>` elements
-- **3D models**: `<Model>` component from `@webspatial/react-sdk` for inline 3D models (USDZ and GLB formats)
+- **3D models (static)**: `<Model>` component from `@webspatial/react-sdk` for inline 3D models (USDZ and GLB formats) — like `<img>` for 3D
+- **Dynamic 3D / Reality**: `<Reality>` component for building 3D scenes with primitives (`BoxEntity`, `SphereEntity`, etc.), materials (`UnlitMaterial`), and model instances (`ModelAsset` + `ModelEntity`) — like `<canvas>` but for 3D. Use when the user needs procedural/programmatic 3D content, multiple instances of a model, animated primitives, or interactive 3D scenes
 - **Multi-scene**: use `window.open()` with a named target, and `initScene()` from `@webspatial/react-sdk` to configure new scene windows
 - **Spatial styles gating**: spatial-specific styles go in each page's own CSS file, scoped under `html.isSpatial` — `index.css` only contains the global spatial defaults (background material, color)
+
+## Dynamic 3D with `<Reality>`
+
+When the user needs more than a static 3D model — e.g. procedural shapes, multiple model instances, animated primitives, or interactive 3D scenes — use the `<Reality>` component instead of `<Model>`. Read `references/code-examples.md` section "6. Dynamic 3D with Reality" for complete patterns.
+
+### When to use `<Reality>` vs `<Model>`
+
+| Need | Use |
+|---|---|
+| Display a single 3D model file | `<Model>` (static) |
+| Build a 3D scene with primitives (boxes, spheres, etc.) | `<Reality>` |
+| Instance one model many times (e.g. fleet of ships) | `<Reality>` with `ModelAsset` + `ModelEntity` |
+| Animate 3D transforms per-frame | `<Reality>` |
+| Combine primitives, models, and interaction | `<Reality>` |
+
+### Key concepts
+
+- **`<Reality>`** — 3D viewport container. Size with CSS like any `div`. Hosts materials, model assets, and a scene graph. Use `--xr-depth` for the container's depth.
+- **`<SceneGraph>`** — Root of the 3D scene tree inside `<Reality>`. All entities must be children of this.
+- **`<Entity>`** — Empty transform group. Has `position`, `rotation`, `scale`. Groups children; moving the entity moves all descendants.
+- **Primitive entities** — `BoxEntity`, `SphereEntity`, `PlaneEntity`, `ConeEntity`, `CylinderEntity`. All sizes in **meters**, rotation in **radians**.
+- **`<UnlitMaterial>`** — Material resource declared by `id`. Referenced via `materials={['id']}` on primitives or `ModelEntity`.
+- **`<ModelAsset>`** — Loaded 3D model resource (USDZ/GLB). Declared by `id` and `src`. Invisible by itself; referenced by `ModelEntity`.
+- **`<ModelEntity>`** — Instance of a `ModelAsset` in the scene. Same asset can be instanced many times.
+
+### Structure inside `<Reality>`
+
+Declare resources (materials, assets) first, then `<SceneGraph>`:
+
+```tsx
+import {
+  Reality, SceneGraph, Entity,
+  BoxEntity, SphereEntity,
+  UnlitMaterial, ModelAsset, ModelEntity,
+} from '@webspatial/react-sdk';
+
+<Reality style={{ width: '500px', height: '500px', '--xr-depth': 100 }}>
+  <UnlitMaterial id="red" color="#ff0000" />
+  <ModelAsset id="teapot" src="/usdz/teapot.usdz" />
+  <SceneGraph>
+    <BoxEntity materials={['red']} width={0.2} height={0.2} depth={0.2} />
+    <ModelEntity model="teapot" position={{ x: 0, y: 0.2, z: 0 }} />
+  </SceneGraph>
+</Reality>
+```
+
+### Coordinate system
+
+- **+Y** up, **+X** right, **+Z** toward the viewer (right-handed)
+- Sizes/distances in **meters** (`0.1` = 10 cm)
+- Rotation in **radians** (`Math.PI/2` = 90°)
+
+### Interaction and animation
+
+Entities support spatial event handlers: `onSpatialTap`, `onSpatialDragStart`, `onSpatialDrag`, `onSpatialDragEnd`, `onSpatialRotate`, `onSpatialMagnify`. Drive animation via `requestAnimationFrame` updating React state.
+
+### Dynamic updates (Phase 2)
+
+- Changing `UnlitMaterial` props (`color`, `opacity`) at runtime updates all entities using that material
+- Changing primitive geometry props rebuilds the geometry in place
+- Changing `ModelEntity`'s `model` prop recreates the entity with the new asset
+- `ModelEntity` accepts `materials` for material override on the model instance
 
 ## Important notes
 
