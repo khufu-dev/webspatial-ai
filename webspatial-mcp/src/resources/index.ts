@@ -7,10 +7,12 @@
  *  - webspatial://scene      — spatial scene state
  *  - webspatial://logs       — filtered logcat
  *  - webspatial://manifest   — web app manifest from current page
+ *  - webspatial://debug-platforms — static PICO vs visionOS debug reference (no ADB)
  */
 
 import * as adb from "../utils/adb.js";
 import * as ws from "../utils/webspatial.js";
+import { STATIC_PLATFORM_GUIDE } from "../utils/debug_platform_guide.js";
 
 export interface ResourceDef {
   uri: string;
@@ -69,6 +71,27 @@ export const resources: ResourceDef[] = [
     handler: async () => {
       const xml = await adb.dumpUi();
       return { uri: "device://ui-tree", text: xml, mimeType: "application/xml" };
+    },
+  },
+  {
+    uri: "webspatial://debug-platforms",
+    name: "WebSpatial debug platforms",
+    description:
+      "How to debug WebSpatial on PICO OS 6 (ADB) vs visionOS Simulator: workflows, tools, resources. Read without a device.",
+    mimeType: "application/json",
+    handler: async () => {
+      const doc = {
+        server_purpose:
+          "WebSpatial MCP supports two targets: PICO OS 6 via ADB, and visionOS via simctl on macOS. Use tool webspatial_debug_route to classify a user prompt.",
+        how_to_route:
+          "Call webspatial_debug_route with the user's goal text for primary_route + next_step. This resource is the same static guide embedded in that response.",
+        ...STATIC_PLATFORM_GUIDE,
+      };
+      return {
+        uri: "webspatial://debug-platforms",
+        text: JSON.stringify(doc, null, 2),
+        mimeType: "application/json",
+      };
     },
   },
 ];

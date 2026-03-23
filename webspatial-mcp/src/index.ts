@@ -3,19 +3,14 @@
 /**
  * @webspatial/adb-mcp-server
  *
- * MCP server for debugging and testing WebSpatial sites on
- * PICO OS 6 (Swan) via ADB.
+ * MCP server for debugging WebSpatial experiences on:
+ *   - PICO OS 6 (Swan): Android device/emulator via ADB
+ *   - visionOS: Xcode Simulator on macOS via xcrun simctl (+ optional AppleScript)
+ *
+ * When the user's target is unclear, use tool `webspatial_debug_route` with their
+ * prompt to choose the right workflow, or read resource `webspatial://debug-platforms`.
  *
  * Transport: stdio (for Claude Desktop, Cursor, Claude Code, etc.)
- *
- * Architecture:
- *   Claude / MCP Client
- *       ↕  (stdio / JSON-RPC)
- *   This MCP Server
- *       ↕  (child_process.execFile)
- *   adb → PICO OS 6 emulator or device
- *       ↕  (input commands, screencap, uiautomator, shell)
- *   WebSpatial App Shell + WebEngine (Chromium)
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -26,6 +21,7 @@ import { inspectionTools } from "./tools/inspection.js";
 import { webspatialTools } from "./tools/webspatial.js";
 import { nativeUiTools } from "./tools/native_ui.js";
 import { visionosTools } from "./tools/visionos.js";
+import { debugGuideTools } from "./tools/debug_guide.js";
 import { resources } from "./resources/index.js";
 import { autoSelectDevice, setAdbPath, setDeviceSerial } from "./utils/adb.js";
 import { z } from "zod";
@@ -41,12 +37,27 @@ if (process.env.ANDROID_DEVICE_SERIAL) setDeviceSerial(process.env.ANDROID_DEVIC
 // Create MCP Server
 // ---------------------------------------------------------------------------
 
+const SERVER_INSTRUCTIONS = [
+  "This server helps debug WebSpatial sites on two different stacks:",
+  "",
+  "1) PICO OS 6 (Swan) — Android: ADB tools (screenshot, get_ui_tree, tap/swipe, setup_dev_ports, launch_app, inspect_spatial_scene, webspatial_logs, …) and resources device://*, webspatial://scene, webspatial://logs.",
+  "",
+  "2) visionOS — macOS Simulator: visionos_* tools only (launch/screenshot/capture_angles/simctl). ADB tools do not apply.",
+  "",
+  "Routing: If the user does not say which platform, call webspatial_debug_route with their message (or goal) first. It returns primary_route (pico_os6 | visionos | both | unclear), matched_signals, next_step, and full per-platform workflows.",
+  "Static reference without routing: tool webspatial_platform_guide or resource webspatial://debug-platforms.",
+].join("\n");
+
 const server = new McpServer(
   {
     name: "webspatial-adb",
+    title: "WebSpatial debug (PICO OS 6 + visionOS)",
+    description:
+      "Debug WebSpatial on PICO OS 6 via ADB or on visionOS Simulator via simctl. Route ambiguous requests with webspatial_debug_route.",
     version: "0.1.0",
   },
   {
+    instructions: SERVER_INSTRUCTIONS,
     capabilities: {
       tools: {},
       resources: {},
@@ -59,7 +70,14 @@ const server = new McpServer(
 // Register all tools
 // ---------------------------------------------------------------------------
 
-const allTools = [...inputTools, ...inspectionTools, ...webspatialTools, ...nativeUiTools, ...visionosTools];
+const allTools = [
+  ...debugGuideTools,
+  ...inputTools,
+  ...inspectionTools,
+  ...webspatialTools,
+  ...nativeUiTools,
+  ...visionosTools,
+];
 
 for (const tool of allTools) {
   server.tool(
@@ -95,7 +113,7 @@ for (const res of resources) {
 
 server.prompt(
   "debug-webspatial",
-  "Debug a WebSpatial site on PICO OS 6",
+  "Debug a WebSpatial site on PICO OS 6 (ADB / Android — not visionOS)",
   { url: z.string().optional().describe("URL of the WebSpatial site to debug") },
   ({ url }) => ({
     messages: [
@@ -104,7 +122,7 @@ server.prompt(
         content: {
           type: "text",
           text: [
-            "I need to debug a WebSpatial site on a PICO OS 6 device.",
+            "I need to debug a WebSpatial site on PICO OS 6 (Swan) using ADB — not on visionOS Simulator.",
             url ? `The site URL is: ${url}` : "",
             "",
             "Please follow this workflow:",
@@ -140,6 +158,7 @@ server.prompt(
           text: [
             "I want to test user interactions on the current WebSpatial site.",
             element ? `Focus on: ${element}` : "",
+            "Platform: on PICO use tap/swipe/get_ui_tree; on visionOS use Simulator UI manually or narrow automation — call webspatial_debug_route if unsure.",
             "",
             "Please:",
             "1. Take a screenshot to see the current state",
@@ -159,6 +178,69 @@ server.prompt(
 );
 
 server.prompt(
+  "debug-webspatial-visionos",
+  "Debug a WebSpatial site on visionOS Simulator (macOS / simctl — not PICO ADB)",
+  {
+    bundle_id: z
+      .string()
+      .optional()
+      .describe("visionOS app bundle ID (e.g. com.webspatial.test)"),
+  },
+  ({ bundle_id }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: [
+            "I need to debug a WebSpatial site on visionOS Simulator (Xcode / xcrun simctl).",
+            bundle_id ? `Bundle ID: ${bundle_id}` : "",
+            "",
+            "Do not use ADB or device:// resources — they target Android.",
+            "Use visionos_* MCP tools on macOS with a booted visionOS simulator.",
+            "",
+            "Suggested flow:",
+            "1. visionos_ensure_webspatial_running or visionos_launch_app",
+            "2. visionos_screenshot (and visionos_capture_angles if multiple angles help)",
+            "3. visionos_get_app_container if filesystem paths are needed",
+            "",
+            "Report findings and next steps.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        },
+      },
+    ],
+  }),
+);
+
+server.prompt(
+  "debug-webspatial-route",
+  "Pick PICO vs visionOS WebSpatial debug path from a goal (uses webspatial_debug_route)",
+  {
+    goal: z.string().describe("What the user wants to do or fix (paste their message)"),
+  },
+  ({ goal }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: [
+            "I have a WebSpatial debugging goal but the target platform may be unclear:",
+            "",
+            `"${goal}"`,
+            "",
+            "First call the MCP tool webspatial_debug_route with prompt set to that goal (or the full user message).",
+            "Follow primary_route and next_step from the JSON: use ADB tools for pico_os6, visionos_* for visionos, or clarify if unclear.",
+          ].join("\n"),
+        },
+      },
+    ],
+  }),
+);
+
+server.prompt(
   "spatial-audit",
   "Audit spatial rendering of a WebSpatial site",
   () => ({
@@ -169,6 +251,7 @@ server.prompt(
           type: "text",
           text: [
             "Audit the spatial rendering of the current WebSpatial site.",
+            "If the session is on visionOS Simulator, use visionos_screenshot / visionos_capture_angles instead of ADB screenshot; if on PICO, use inspect_spatial_scene and screenshot.",
             "",
             "Please:",
             "1. Take a screenshot of the spatial UI",

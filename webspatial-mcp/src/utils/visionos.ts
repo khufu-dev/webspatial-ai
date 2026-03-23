@@ -3,9 +3,13 @@
  *
  * Wraps `xcrun simctl` with structured error reporting.
  * Uses "booted" as the default simulator target.
+ *
+ * Camera nudging uses AppleScript + System Events (keystrokes), not mouse drag or Quartz.
  */
 
 import { execFile, ExecFileOptions } from "node:child_process";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -23,6 +27,24 @@ export interface VisionOSResult {
   command: string;
   stdout: string;
   stderr: string;
+}
+
+export type CameraDirection = "left" | "right" | "forward" | "back" | "up" | "down";
+
+export interface CaptureAnglesResult {
+  ok: boolean;
+  commands: string[];
+  screenshot_paths: string[];
+  stdout: string;
+  stderr: string;
+}
+
+export interface CaptureAnglesOptions {
+  outputDir: string;
+  directions?: CameraDirection[];
+  stepsPerDirection?: number;
+  viewSettleMs?: number;
+  keyDelayMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +77,62 @@ async function exec(
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function runOsascript(script: string, label: string): Promise<VisionOSResult> {
+  return new Promise((resolve) => {
+    execFile(
+      "osascript",
+      ["-e", script],
+      { timeout: 20_000, encoding: "utf-8" },
+      (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          command: `osascript (${label})`,
+          stdout: (stdout ?? "").toString(),
+          stderr: (error ? `${error.message}\n` : "") + (stderr ?? "").toString(),
+        });
+      },
+    );
+  });
+}
+
+function inverseDirection(d: CameraDirection): CameraDirection {
+  const m: Record<CameraDirection, CameraDirection> = {
+    left: "right",
+    right: "left",
+    forward: "back",
+    back: "forward",
+    up: "down",
+    down: "up",
+  };
+  return m[d];
+}
+
+/** Single key action per step inside System Events → Simulator. */
+function directionToAppleScriptBody(direction: CameraDirection): string {
+  switch (direction) {
+    case "left":
+      return "key code 123"; // left arrow
+    case "right":
+      return "key code 124"; // right arrow
+    case "forward":
+      return 'keystroke "w"';
+    case "back":
+      return 'keystroke "s"';
+    case "up":
+      return 'keystroke "q"';
+    case "down":
+      return 'keystroke "e"';
+    default: {
+      const _exhaustive: never = direction;
+      return _exhaustive;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public simctl commands
 // ---------------------------------------------------------------------------
@@ -82,6 +160,118 @@ export async function terminateApp(bundleId: string): Promise<VisionOSResult> {
 /** Take a screenshot and save to the given path. */
 export async function screenshot(outputPath: string): Promise<VisionOSResult> {
   return exec(["simctl", "io", "booted", "screenshot", outputPath]);
+}
+
+/**
+ * Bring the Simulator app to the front so keystrokes target it.
+ * Requires Automation / Accessibility permissions for System Events.
+ */
+export async function focusSimulator(): Promise<VisionOSResult> {
+  const script = `
+    tell application "Simulator" to activate
+    delay 0.12
+    tell application "System Events"
+      tell process "Simulator"
+        set frontmost to true
+      end tell
+    end tell
+  `;
+  return runOsascript(script, "focusSimulator");
+}
+
+/**
+ * Send a short burst of key presses to nudge the simulator camera.
+ * Steps are conservative; pair with inverse direction to return to roughly the same pose.
+ */
+export async function sendSimulatorKeys(
+  direction: CameraDirection,
+  steps: number,
+  opts?: { keyDelayMs?: number },
+): Promise<VisionOSResult> {
+  const keyDelayMs = opts?.keyDelayMs ?? 80;
+  const delayStr = (keyDelayMs / 1000).toFixed(3);
+  const body = directionToAppleScriptBody(direction);
+  const script = `
+    tell application "Simulator" to activate
+    delay 0.12
+    tell application "System Events"
+      tell process "Simulator"
+        set frontmost to true
+        repeat ${steps} times
+          ${body}
+          delay ${delayStr}
+        end repeat
+      end tell
+    end tell
+  `;
+  return runOsascript(script, `sendSimulatorKeys:${direction}:${steps}`);
+}
+
+/**
+ * Focus Simulator, capture a baseline screenshot, then for each direction nudge keys,
+ * screenshot, and nudge back. Uses simctl for PNGs (same as visionos_screenshot).
+ */
+export async function captureAngles(options: CaptureAnglesOptions): Promise<CaptureAnglesResult> {
+  const {
+    outputDir,
+    directions = ["left", "right"],
+    stepsPerDirection = 2,
+    viewSettleMs = 300,
+    keyDelayMs = 80,
+  } = options;
+
+  const commands: string[] = [];
+  const screenshotPaths: string[] = [];
+  let stdout = "";
+  let stderr = "";
+  let ok = true;
+
+  const append = (r: VisionOSResult) => {
+    commands.push(r.command);
+    stdout += (stdout ? "\n" : "") + r.stdout;
+    stderr += (stderr ? "\n" : "") + r.stderr;
+    if (!r.ok) ok = false;
+  };
+
+  await mkdir(outputDir, { recursive: true });
+
+  const focusResult = await focusSimulator();
+  append(focusResult);
+  await sleep(viewSettleMs);
+
+  const baselinePath = path.join(outputDir, "00_baseline.png");
+  const baselineShot = await screenshot(baselinePath);
+  append(baselineShot);
+  if (baselineShot.ok) screenshotPaths.push(baselinePath);
+
+  let index = 1;
+  for (const direction of directions) {
+    const nudge = await sendSimulatorKeys(direction, stepsPerDirection, { keyDelayMs });
+    append(nudge);
+    await sleep(viewSettleMs);
+
+    const shotPath = path.join(
+      outputDir,
+      `${String(index).padStart(2, "0")}_${direction}.png`,
+    );
+    const shot = await screenshot(shotPath);
+    append(shot);
+    if (shot.ok) screenshotPaths.push(shotPath);
+
+    const undo = await sendSimulatorKeys(inverseDirection(direction), stepsPerDirection, { keyDelayMs });
+    append(undo);
+    await sleep(Math.min(viewSettleMs, 200));
+
+    index += 1;
+  }
+
+  return {
+    ok,
+    commands,
+    screenshot_paths: screenshotPaths,
+    stdout,
+    stderr,
+  };
 }
 
 // ---------------------------------------------------------------------------
