@@ -1,8 +1,2 @@
 *.sublime-workspace
 .DS_Store
-webspatial-mcp/node_modules
-webspatial-mcp/build
-webspatial-mcp/dist
-webspatial-mcp/package-lock.json
-webspatial-mcp/tsconfig.tsbuildinfo
-webspatial-mcp/.cursor
