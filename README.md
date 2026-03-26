@@ -1,5 +1,10 @@
 # Overview
-Build an AI to automatically build, deploy and test WebSpatial applications that can easily be opened on the emulator or device.
+AI to automatically build, deploy and test WebSpatial applications that can easily be opened on the emulator or device.
+
+# Quick Start
+1. Download the [WebSpatial Skill](https://github.com/khufu-dev/webspatial-ai/raw/refs/heads/main/skills/webspatial-claude.skill) into your favourite powerful AI (i.e. Aime, Claude 4.6, ChatGPT 4.5)
+2. Prompt it to create a WebSpatial app
+> Create a WebSpatial app that shows a gallery of USDZ 3D models. When I click on the 3D model, it takes me to the detail page where the 3D model rotates
 
 # Goal
 - Create a simple WebSpatial app using AI prompt
