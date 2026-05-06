@@ -30,7 +30,6 @@
   "devDependencies": {
     "@types/node": "latest",
     "@webspatial/builder": "latest",
-    "@webspatial/platform-visionos": "latest",
-    "@webspatial/vite-plugin": "latest"
+    "@webspatial/platform-visionos": "latest"
   }
 }
